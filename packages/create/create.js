@@ -385,52 +385,53 @@ async function inquirerMissingArgs(args) {
 					default: true,
 				},
 			], answers);
-		}
 
-		if (!answers.downloadHeadless) {
-			answers = await inquirer.prompt([
-				{
-					type: "list",
-					name: "factorioDir",
-					message: "Path to Factorio installation",
-					choices: [
-						...foundLocations.map(location => ({ name: `${location} (auto detected)`, value: location })),
-						{
-							name: "Use local factorio directory, you must copy an installation to it",
-							value: "factorio",
-						},
-						{ name: "Provide path manually", value: null },
-					],
-				},
-			], answers);
-
-			if (answers.factorioDir === null) {
-				answers = await inquirer.prompt([
-					{
-						type: "input",
-						name: "factorioDir",
-						message: "Path to Factorio installation",
-						askAnswered: true,
-					},
-				], answers);
-			} else if (answers.factorioDir === "factorio") {
-				await fs.ensureDir("factorio");
+			if (answers.downloadHeadless) {
+				answers.factorioDir = "factorio"
 			}
 		}
 
-		if (dev) { answers.plugins = []; }
 		answers = await inquirer.prompt([
 			{
-				type: "checkbox",
-				name: "plugins",
-				message: "Plugins to install",
-				choices: availablePlugins,
-				pageSize: 20,
+				type: "list",
+				name: "factorioDir",
+				message: "Path to Factorio installation",
+				choices: [
+					...foundLocations.map(location => ({ name: `${location} (auto detected)`, value: location })),
+					{
+						name: "Use local factorio directory, you must copy an installation to it",
+						value: "factorio",
+					},
+					{ name: "Provide path manually", value: null },
+				],
 			},
 		], answers);
 
-		return answers;
+		if (answers.factorioDir === null) {
+			answers = await inquirer.prompt([
+				{
+					type: "input",
+					name: "factorioDir",
+					message: "Path to Factorio installation",
+					askAnswered: true,
+				},
+			], answers);
+		} else if (answers.factorioDir === "factorio") {
+			await fs.ensureDir("factorio");
+		}
 	}
+	if (dev) { answers.plugins = []; }
+	answers = await inquirer.prompt([
+		{
+			type: "checkbox",
+			name: "plugins",
+			message: "Plugins to install",
+			choices: availablePlugins,
+			pageSize: 20,
+		},
+	], answers);
+
+	return answers;
 }
 
 
@@ -448,8 +449,7 @@ async function downloadLinuxServer() {
 	const factorioDir = `factorio/${version}/`;
 	const tmpFactorioDir = tmpDir + version;
 
-	// eslint-disable-next-line node/no-sync
-	if (fs.existsSync(factorioDir)) {
+	if (await fs.pathExists(factorioDir)) {
 		logger.warn(`setting downloadDir to ${factorioDir}, but not downloading because already existing`);
 	} else {
 		await fs.ensureDir(tmpDir);
@@ -522,7 +522,7 @@ async function main() {
 			.option("download-headless", {
 				nargs: 0,
 				describe: "(Linux only) Automatically download and unpack the latest factorio release. " +
-				"Can be set to false using --no-download-headless.",
+					"Can be set to false using --no-download-headless.",
 				type: "boolean",
 			})
 			.conflicts("factorio-dir", "download-headless");
