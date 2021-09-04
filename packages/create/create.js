@@ -10,7 +10,7 @@ const phin = require("phin");
 const stream = require("stream");
 const util = require("util");
 const yargs = require("yargs");
-
+const { once } = require("events");
 const { levels, logger, setLogLevel } = require("./logging");
 let dev = false;
 const scriptExt = process.platform === "win32" ? ".cmd" : "";
@@ -60,7 +60,7 @@ class LineSplitter extends stream.Transform {
 
 			let next = end + 1;
 			// Eat carriage return as well if present
-			if (end >= 1 && chunk[end-1] === "\r".charCodeAt(0)) {
+			if (end >= 1 && chunk[end - 1] === "\r".charCodeAt(0)) {
 				end -= 1;
 			}
 
@@ -278,6 +278,7 @@ WantedBy=multi-user.target
 async function inquirerMissingArgs(args) {
 	let answers = {};
 	if (args.mode) { answers.mode = args.mode; }
+
 	answers = await inquirer.prompt([
 		{
 			type: "list",
@@ -374,50 +375,115 @@ async function inquirerMissingArgs(args) {
 			}
 		}
 
+		if (process.platform === "linux") {
+			if (args.hasOwnProperty('downloadHeadless')) { answers.downloadHeadless = args.downloadHeadless; }
+			answers = await inquirer.prompt([
+				{
+					type: "confirm",
+					name: "downloadHeadless",
+					message: "(Linux only) Automatically download latest factorio release?",
+					default: true,
+				},
+			], answers);
+		}
+
+		if (!answers.downloadHeadless) {
+			answers = await inquirer.prompt([
+				{
+					type: "list",
+					name: "factorioDir",
+					message: "Path to Factorio installation",
+					choices: [
+						...foundLocations.map(location => ({ name: `${location} (auto detected)`, value: location })),
+						{
+							name: "Use local factorio directory, you must copy an installation to it",
+							value: "factorio",
+						},
+						{ name: "Provide path manually", value: null },
+					],
+				},
+			], answers);
+
+			if (answers.factorioDir === null) {
+				answers = await inquirer.prompt([
+					{
+						type: "input",
+						name: "factorioDir",
+						message: "Path to Factorio installation",
+						askAnswered: true,
+					},
+				], answers);
+			} else if (answers.factorioDir === "factorio") {
+				await fs.ensureDir("factorio");
+			}
+		}
+
+		if (dev) { answers.plugins = []; }
 		answers = await inquirer.prompt([
 			{
-				type: "list",
-				name: "factorioDir",
-				message: "Path to Factorio installation",
-				choices: [
-					...foundLocations.map(location => ({ name: `${location} (auto detected)`, value: location })),
-					{ name: "Use local factorio directory, you must copy an installation to it", value: "factorio" },
-					{ name: "Provide path manually", value: null },
-				],
+				type: "checkbox",
+				name: "plugins",
+				message: "Plugins to install",
+				choices: availablePlugins,
+				pageSize: 20,
 			},
 		], answers);
 
-		if (answers.factorioDir === null) {
-			answers = await inquirer.prompt([
-				{
-					type: "input",
-					name: "factorioDir",
-					message: "Path to Factorio installation",
-					askAnswered: true,
-				},
-			], answers);
-		} else if (answers.factorioDir === "factorio") {
-			await fs.ensureDir("factorio");
-		}
+		return answers;
 	}
-
-	if (dev) { answers.plugins = []; }
-	answers = await inquirer.prompt([
-		{
-			type: "checkbox",
-			name: "plugins",
-			message: "Plugins to install",
-			choices: availablePlugins,
-			pageSize: 20,
-		},
-	], answers);
-
-	return answers;
 }
 
 
+async function downloadLinuxServer() {
+	let res = await phin("https://factorio.com/get-download/stable/headless/linux64");
+
+	const url = new URL(res.headers.location);
+	// get the filename of the latest factorio archive from redirected url
+	const filename = path.posix.basename(url.pathname);
+	const version = filename.match(/(?<=factorio_headless_x64_).*(?=\.tar\.xz)/)[0];
+
+	const tmpDir = "temp/create-temp/";
+	const archivePath = tmpDir + filename;
+	const tmpArchivePath = `${archivePath}.tmp`;
+	const factorioDir = `factorio/${version}/`;
+	const tmpFactorioDir = tmpDir + version;
+
+	// eslint-disable-next-line node/no-sync
+	if (fs.existsSync(factorioDir)) {
+		logger.warn(`setting downloadDir to ${factorioDir}, but not downloading because already existing`);
+	} else {
+		await fs.ensureDir(tmpDir);
+
+		// follow the redirect
+		res = await phin({
+			url: url.href,
+			stream: true,
+		});
+
+
+		logger.info("Downloading latest Factorio server release. This may take a while.");
+		const writeStream = fs.createWriteStream(tmpArchivePath);
+		res.pipe(writeStream);
+
+		await once(res, "end");
+
+		await fs.rename(tmpArchivePath, archivePath);
+		try {
+			await fs.ensureDir(tmpFactorioDir);
+			await execFile("tar", [
+				"xf", archivePath, "-C", tmpFactorioDir, "--strip-components", "1",
+			]);
+		} catch (e) {
+			logger.error("error executing command- do you have 'xz-utils' installed?");
+			throw e;
+		}
+
+		await fs.rename(tmpFactorioDir, factorioDir);
+	}
+}
+
 async function main() {
-	const args = yargs
+	let args = yargs
 		.option("log-level", {
 			nargs: 1, describe: "Log level to print to stdout", default: "info",
 			choices: ["none"].concat(Object.keys(levels)), type: "string",
@@ -449,9 +515,20 @@ async function main() {
 		})
 		.option("plugins", {
 			array: true, describe: "Plugins to install", type: "string",
-		})
-		.argv
-	;
+		});
+
+	if (process.platform === "linux") {
+		args = args
+			.option("download-headless", {
+				nargs: 0,
+				describe: "(Linux only) Automatically download and unpack the latest factorio release. " +
+				"Can be set to false using --no-download-headless.",
+				type: "boolean",
+			})
+			.conflicts("factorio-dir", "download-headless");
+	}
+
+	args = args.argv;
 
 	setLogLevel(args.logLevel === "none" ? -1 : levels[args.logLevel]);
 	dev = args.dev;
@@ -462,6 +539,10 @@ async function main() {
 
 	let answers = await inquirerMissingArgs(args);
 	logger.verbose(JSON.stringify(answers));
+
+	if (answers.downloadHeadless) {
+		answers.factorioDir = await downloadLinuxServer();
+	}
 
 	if (!dev) {
 		await installClusterio(answers.mode, answers.plugins);
