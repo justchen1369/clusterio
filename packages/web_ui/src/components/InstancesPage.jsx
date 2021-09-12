@@ -2,7 +2,7 @@ import React, { useContext, useState } from "react";
 import { useHistory } from "react-router-dom";
 import { Button, Form, Input, Modal, PageHeader, Table } from "antd";
 
-import { libConfig, libLink } from "@clusterio/lib";
+import { libConfig, libLink, libErrors } from "@clusterio/lib";
 
 import ControlContext from "./ControlContext";
 import PageLayout from "./PageLayout";
@@ -10,6 +10,58 @@ import { useInstanceList } from "../model/instance";
 import { notifyErrorHandler } from "../util/notify";
 import { useSlaveList } from "../model/slave";
 
+function CreateStartAllButton(props) {
+	let [instanceList] = useInstanceList();
+
+	let [loading, setLoading] = useState(false);
+
+	let control = useContext(ControlContext);
+
+	return <Button
+		onClick={async () => {
+			setLoading(true);
+			for (const instance of instanceList) {
+				try {
+					const result = await libLink.messages.startInstance
+						.send(control, { instance_id: instance.id, save: null });
+				} catch (err) {
+					notifyErrorHandler(`Error starting "${instance.name}"`)(err);
+					if (err instanceof libErrors.SessionLost) {
+						break;
+					}
+				}
+			}
+			setLoading(false);
+		}}
+		loading={loading}
+	>Start All</Button>;
+}
+
+function CreateStopAllButton(props) {
+	let [instanceList] = useInstanceList();
+	let control = useContext(ControlContext);
+
+	let [loading, setLoading] = useState(false);
+
+	return <Button
+		onClick={async () => {
+			setLoading(true);
+			for (const instance of instanceList) {
+				try {
+					const result = await libLink.messages.stopInstance
+						.send(control, { instance_id: instance.id });
+				} catch (err) {
+					notifyErrorHandler(`Error stopping "${instance.name}"`)(err);
+					if (err instanceof libErrors.SessionLost) {
+						break;
+					}
+				}
+			}
+			setLoading(false);
+		}}
+		loading={loading}
+	>Stop All</Button>;
+}
 
 function CreateInstanceButton(props) {
 	let control = useContext(ControlContext);
@@ -39,7 +91,7 @@ function CreateInstanceButton(props) {
 			onClick={() => {
 				setVisible(true);
 			}}
-		>Create</Button>
+		>Create New</Button>
 		<Modal
 			title="Create Instance"
 			okText="Create"
@@ -50,13 +102,20 @@ function CreateInstanceButton(props) {
 		>
 			<Form form={form}>
 				<Form.Item name="instanceName" label="Name">
-					<Input/>
+					<Input />
 				</Form.Item>
 			</Form>
 		</Modal>
 	</>;
 }
 
+function CreateHeaderButtons() {
+	return <>
+		<CreateStartAllButton />
+		<CreateStopAllButton />
+		<CreateInstanceButton />
+	</>;
+}
 export default function InstancesPage() {
 	let history = useHistory();
 	let [slaveList] = useSlaveList();
@@ -66,7 +125,7 @@ export default function InstancesPage() {
 		<PageHeader
 			className="site-page-header"
 			title="Instances"
-			extra=<CreateInstanceButton />
+			extra=<CreateHeaderButtons />
 		/>
 
 		<Table
