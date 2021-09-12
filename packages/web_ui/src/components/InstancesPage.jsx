@@ -22,8 +22,7 @@ function StartAllButton(props) {
 			setLoading(true);
 			for (const instance of instanceList) {
 				try {
-					const result = await libLink.messages.startInstance
-						.send(control, { instance_id: instance.id, save: null });
+					await libLink.messages.startInstance.send(control, { instance_id: instance.id, save: null });
 				} catch (err) {
 					notifyErrorHandler(`Error starting "${instance.name}"`)(err);
 					if (err instanceof libErrors.SessionLost) {
@@ -48,8 +47,7 @@ function StopAllButton(props) {
 			setLoading(true);
 			for (const instance of instanceList) {
 				try {
-					const result = await libLink.messages.stopInstance
-						.send(control, { instance_id: instance.id });
+					await libLink.messages.stopInstance.send(control, { instance_id: instance.id });
 				} catch (err) {
 					notifyErrorHandler(`Error stopping "${instance.name}"`)(err);
 					if (err instanceof libErrors.SessionLost) {
