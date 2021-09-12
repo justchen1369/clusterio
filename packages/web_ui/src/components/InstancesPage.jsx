@@ -21,12 +21,14 @@ function StartAllButton(props) {
 		onClick={async () => {
 			setLoading(true);
 			for (const instance of instanceList) {
-				try {
-					await libLink.messages.startInstance.send(control, { instance_id: instance.id, save: null });
-				} catch (err) {
-					notifyErrorHandler(`Error starting "${instance.name}"`)(err);
-					if (err instanceof libErrors.SessionLost) {
-						break;
+				if (instance.status === "stopped") {
+					try {
+						await libLink.messages.startInstance.send(control, { instance_id: instance.id, save: null });
+					} catch (err) {
+						notifyErrorHandler(`Error starting "${instance.name}"`)(err);
+						if (err instanceof libErrors.SessionLost) {
+							break;
+						}
 					}
 				}
 			}
@@ -46,12 +48,14 @@ function StopAllButton(props) {
 		onClick={async () => {
 			setLoading(true);
 			for (const instance of instanceList) {
-				try {
-					await libLink.messages.stopInstance.send(control, { instance_id: instance.id });
-				} catch (err) {
-					notifyErrorHandler(`Error stopping "${instance.name}"`)(err);
-					if (err instanceof libErrors.SessionLost) {
-						break;
+				if (instance.status === "running") {
+					try {
+						await libLink.messages.stopInstance.send(control, { instance_id: instance.id });
+					} catch (err) {
+						notifyErrorHandler(`Error stopping "${instance.name}"`)(err);
+						if (err instanceof libErrors.SessionLost) {
+							break;
+						}
 					}
 				}
 			}
