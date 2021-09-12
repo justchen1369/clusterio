@@ -10,7 +10,7 @@ import { useInstanceList } from "../model/instance";
 import { notifyErrorHandler } from "../util/notify";
 import { useSlaveList } from "../model/slave";
 
-function CreateStartAllButton(props) {
+function StartAllButton(props) {
 	let [instanceList] = useInstanceList();
 
 	let [loading, setLoading] = useState(false);
@@ -37,7 +37,7 @@ function CreateStartAllButton(props) {
 	>Start All</Button>;
 }
 
-function CreateStopAllButton(props) {
+function StopAllButton(props) {
 	let [instanceList] = useInstanceList();
 	let control = useContext(ControlContext);
 
@@ -111,8 +111,8 @@ function CreateInstanceButton(props) {
 
 function CreateHeaderButtons() {
 	return <>
-		<CreateStartAllButton />
-		<CreateStopAllButton />
+		<StartAllButton />
+		<StopAllButton />
 		<CreateInstanceButton />
 	</>;
 }
